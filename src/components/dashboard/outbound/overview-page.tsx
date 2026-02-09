@@ -688,24 +688,16 @@ const OverviewPage = () => {
   const userEmail = useMemo(() => user?.emailAddresses?.[0]?.emailAddress || "", [user?.emailAddresses])
 
 
-  // Timeline costi derivata dal dataset prestazioni
+  // Use Pearl's real cost data (convert from cents to dollars, then multiply by 5)
   const ourCostTimelinePerf = useMemo(() => {
     const src = analyticsPerfData
-    console.log(src)
-    if (!src) return []
-    const avgMap = new Map((src.callsAverageTimeLine || []).map((d) => [d.date, d.averageCallDuration]))
-    const callMap = new Map((src.callsStatusTimeLine || []).map((d) => [d.date, d.totalCalls]))
-    const dates = Array.from(new Set([...avgMap.keys(), ...callMap.keys()])).sort(
-      (a, b) => new Date(a).getTime() - new Date(b).getTime(),
-    )
-    return dates.map((date) => {
-      const avgSec = avgMap.get(date) ?? 0
-      const calls = callMap.get(date) ?? 0
-      const avgMin = avgSec / 60
-      const averageCostPerCall = +(avgMin * OUR_CALL_RATE_PER_MIN).toFixed(3)
-      const totalPrice = +(calls * averageCostPerCall).toFixed(2)
-      return { date, totalPrice, averageCostPerCall }
-    })
+    if (!src || !src.callsCostTimeLine) return []
+    // Pearl API returns cost in cents, divide by 100 to get dollars, then multiply by 5
+    return src.callsCostTimeLine.map((d) => ({
+      date: d.date,
+      totalPrice: +((d.totalPrice / 100) * 5).toFixed(2),
+      averageCostPerCall: +((d.averageCostPerCall / 100) * 5).toFixed(3),
+    }))
   }, [analyticsPerfData])
 
   /* ---- Fetchers ---- */
