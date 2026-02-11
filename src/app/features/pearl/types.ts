@@ -75,3 +75,19 @@ export interface CampaignData {
   createdAt: string
   updatedAt: string
 }
+
+export interface PearlCampaignDetails {
+  id: string
+  name: string
+  type: number
+  status: number
+  phoneNumber: string
+  totalAgents: number
+  created: string
+  budgetConsumed: number
+  totalTodayCalls: number
+  totalOngoingCalls: number
+  totalLeads: number
+  totalLeadsCompleted: number
+  totalLeadsSuccess: number
+}
