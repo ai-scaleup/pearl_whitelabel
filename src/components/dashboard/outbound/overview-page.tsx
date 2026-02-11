@@ -41,6 +41,7 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { X } from "lucide-react"
 import { cn } from "@/lib/utils"
 import Image from "next/image"
+import { PearlCampaignDetails } from "@/app/features/pearl/types"
 
 /* ---------------- Toast ---------------- */
 const ToastProvider = ToastPrimitives.Provider
@@ -247,6 +248,7 @@ interface CampaignStatus {
   status: 'ok' | 'error' | 'checking'
   isActive: boolean | null
   errorMessage: string | null
+  details?: PearlCampaignDetails
 }
 
 interface AnalyticsData {
@@ -337,9 +339,9 @@ const clearAnalyticsStorage = () => {
 const API_BASE_URL = process.env.WHITE_LABEL_API_BASE_URL || "https://whitelabel-server.onrender.com"
 const ANALYTICS_API_BASE_URL = process.env.NLPEARL_API_BASE_URL || "https://api.nlpearl.ai/v2"
 
-const OUR_CALL_RATE_PER_MIN = 0.4 // $ al minuto
-const OUR_SMS_RATE = 0.16 as const
-void OUR_SMS_RATE
+// const OUR_CALL_RATE_PER_MIN = 0.4 // $ al minuto
+// const OUR_SMS_RATE = 0.16 as const
+// void OUR_SMS_RATE
 
 const getDefaultDateRange = () => {
   const to = new Date()
@@ -366,12 +368,7 @@ const sidebarItems = [
   { id: "performance", label: "Analisi", icon: Activity },
 ]
 
-const priceTooltipFormatter: NonNullable<TooltipProps<number, string>["formatter"]> = (value, name, item) => {
-  const dataKey = (item as { dataKey?: string } | undefined)?.dataKey
-  const isTotal = dataKey === "totalPrice"
-  const formatted = isTotal ? `$${(value as number).toFixed(2)}` : `$${(value as number).toFixed(3)}`
-  return [formatted, String(name)]
-}
+
 
 /* ---- Helper date per preset ---- */
 type PresetKey = "today" | "yesterday" | "thisWeek" | "lastWeek" | "thisMonth" | "customDays"
@@ -483,6 +480,7 @@ const OverviewPage = () => {
   const [loading, setLoading] = useState(false)
   const [analyticsLoading, setAnalyticsLoading] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
+
   const [dateRange] = useState(getDefaultDateRange())
   const [activeSection, setActiveSection] = useState("overview")
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -555,6 +553,7 @@ const OverviewPage = () => {
                 status: 'ok',
                 isActive,
                 errorMessage: null,
+                details: data as PearlCampaignDetails,
               })
             }
           } catch (err) {
@@ -688,17 +687,36 @@ const OverviewPage = () => {
   const userEmail = useMemo(() => user?.emailAddresses?.[0]?.emailAddress || "", [user?.emailAddresses])
 
 
-  // Use Pearl's real cost data (convert from cents to dollars, then multiply by 5)
-  const ourCostTimelinePerf = useMemo(() => {
+
+
+  // Calculate Minutes Used (Average Duration * Total Calls / 60)
+  const minutesUsedTimeline = useMemo(() => {
     const src = analyticsPerfData
-    if (!src || !src.callsCostTimeLine) return []
-    // Pearl API returns cost in cents, divide by 100 to get dollars, then multiply by 5
-    return src.callsCostTimeLine.map((d) => ({
-      date: d.date,
-      totalPrice: +((d.totalPrice / 100) * 5).toFixed(2),
-      averageCostPerCall: +((d.averageCostPerCall / 100) * 5).toFixed(3),
-    }))
+    if (!src || !src.callsAverageTimeLine || !src.callsStatusTimeLine) return []
+
+    // Map dates to total calls for easy lookup
+    const callsMap = new Map(src.callsStatusTimeLine.map(i => [i.date, i.totalCalls]))
+
+    return src.callsAverageTimeLine.map((d) => {
+      const totalCalls = callsMap.get(d.date) || 0
+      // specific logic: average duration is in seconds.
+      // Minutes used = (avg duration in sec * total calls) / 60
+      const minutesUsed = Math.ceil((d.averageCallDuration * totalCalls) / 60)
+      const cost = minutesUsed * 0.4
+      return {
+        date: d.date,
+        averageCallDuration: Math.round(d.averageCallDuration), // in seconds
+        minutesUsed: minutesUsed, // in minutes
+        cost: +cost.toFixed(2) // in currency
+      }
+    })
   }, [analyticsPerfData])
+
+  const { totalMinutesShown, totalCostShown } = useMemo(() => {
+    const totalMin = minutesUsedTimeline.reduce((acc, curr) => acc + curr.minutesUsed, 0)
+    const totalCost = minutesUsedTimeline.reduce((acc, curr) => acc + curr.cost, 0)
+    return { totalMinutesShown: totalMin, totalCostShown: totalCost }
+  }, [minutesUsedTimeline])
 
   /* ---- Fetchers ---- */
   const getAnalytics = useCallback(
@@ -922,6 +940,8 @@ const OverviewPage = () => {
     },
     [campaigns, campaignStatuses, fetchOutboundActive, getAnalytics, dateRange],
   )
+
+
 
   const handleRefresh = useCallback(async () => {
     const userEmailLocal = userEmail
@@ -1236,9 +1256,10 @@ const OverviewPage = () => {
                   )}
                   {selectedStatus?.status === 'ok' && (
                     <p className="text-xs text-green-700">
-                      {selectedStatus.isActive ? "Attiva" : "Inattiva"}
+                      {selectedStatus.isActive ? "Active" : "Inactive"}
                     </p>
                   )}
+
                   {selectedStatus?.status === 'error' && (
                     <p className="text-xs text-red-700">
                       {selectedStatus.errorMessage}
@@ -1294,51 +1315,20 @@ const OverviewPage = () => {
             {/* Campaign Status Section */}
             <CampaignStatusSection />
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 lg:gap-4">
+              {/* Card 2: Leads */}
               <Card className="min-w-0">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-xs lg:text-sm font-medium">Chiamate totali</CardTitle>
-                  <Phone className="h-4 w-4 text-muted-foreground" />
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Leads</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-xl lg:text-2xl font-bold">
-                    {data.callsStatusOverview.totalCalls.toLocaleString()}
+                  <div className="text-2xl font-bold">
+                    {selectedStatus?.details?.totalLeads ?? 0}
                   </div>
                 </CardContent>
               </Card>
-              <Card className="min-w-0">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-xs lg:text-sm font-medium">Lead totali</CardTitle>
-                  <Users className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-xl lg:text-2xl font-bold">
-                    {data.callsStatusOverview.totalLeads.toLocaleString()}
-                  </div>
-                </CardContent>
-              </Card>
-              <Card className="min-w-0">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-xs lg:text-sm font-medium">Riuscite</CardTitle>
-                  <TrendingUp className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-xl lg:text-2xl font-bold text-green-600">
-                    {data.callsStatusOverview.successful.toLocaleString()}
-                  </div>
-                </CardContent>
-              </Card>
-              <Card className="min-w-0">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-xs lg:text-sm font-medium">Completate</CardTitle>
-                  <BarChart3 className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-xl lg:text-2xl font-bold">
-                    {data.callsStatusOverview.completed.toLocaleString()}
-                  </div>
-                </CardContent>
-              </Card>
+
+
             </div>
 
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 lg:gap-6">
@@ -1602,46 +1592,74 @@ const OverviewPage = () => {
               </Card>
             </div>
 
-            {/* Analisi dei costi (si aggiorna con il filtro prestazioni) */}
+
+
+            {/* Average Duration & Minutes Used */}
             <Card className="min-w-0">
               <CardHeader className="space-y-1">
-                <CardTitle>Analisi dei costi</CardTitle>
-                <CardDescription>Costo totale e costo medio per chiamata nel tempo</CardDescription>
+                <div className="flex items-center justify-between">
+                  <CardTitle>Durata chiamate e Minuti utilizzati</CardTitle>
+                  <div className="flex gap-2">
+                    <span className="text-sm font-medium px-2.5 py-0.5 rounded bg-blue-100 text-blue-800">
+                      Totale: {totalMinutesShown.toLocaleString(undefined, { maximumFractionDigits: 1 })} min
+                    </span>
+                    <span className="text-sm font-medium px-2.5 py-0.5 rounded bg-green-100 text-green-800">
+                      Costo stimato: ${totalCostShown.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                </div>
+                <CardDescription>Durata media, minuti totali e costo ({`$0.40/min`})</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="h-[230px] sm:h-[260px] lg:h-[300px]">
                   <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={ourCostTimelinePerf}>
+                    <LineChart data={minutesUsedTimeline}>
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="date" tickFormatter={(v) => new Date(v).toLocaleDateString()} fontSize={12} />
-                      <YAxis yAxisId="left" fontSize={12} tickFormatter={(v: number) => `$${v.toFixed(2)}`} />
+                      {/* Left Axis: Average Duration (Seconds) */}
+                      <YAxis
+                        yAxisId="left"
+                        fontSize={12}
+                        tickFormatter={(v) => `${v}s`}
+                        label={{ value: 'Durata Media (sec)', angle: -90, position: 'insideLeft', style: { textAnchor: 'middle' } }}
+                      />
+                      {/* Right Axis: Minutes Used */}
                       <YAxis
                         yAxisId="right"
                         orientation="right"
                         fontSize={12}
-                        tickFormatter={(v: number) => `$${v.toFixed(3)}`}
+                        tickFormatter={(v) => `${v}m`}
+                        label={{ value: 'Minuti Utilizzati', angle: 90, position: 'insideRight', style: { textAnchor: 'middle' } }}
                       />
-                      <Tooltip<number, string>
+                      <Tooltip
                         labelFormatter={(v) => new Date(v).toLocaleDateString()}
-                        formatter={priceTooltipFormatter}
+                        formatter={(value: number, name: string, props: any) => {
+                          if (name === "Durata media") return [`${value}s`, name]
+                          if (name === "Minuti utilizzati") {
+                            // Find the data point to get the cost
+                            const cost = props.payload.cost
+                            return [`${value}m ($${cost})`, name]
+                          }
+                          return [value, name]
+                        }}
                       />
                       <Line
                         yAxisId="left"
                         type="monotone"
-                        dataKey="totalPrice"
-                        stroke="#dc2626"
+                        dataKey="averageCallDuration"
+                        stroke="#2563eb"
                         strokeWidth={2}
-                        name="Costo totale"
-                        dot={{ fill: "#dc2626", strokeWidth: 2, r: 3 }}
+                        name="Durata media"
+                        dot={{ fill: "#2563eb", strokeWidth: 2, r: 3 }}
                       />
                       <Line
                         yAxisId="right"
                         type="monotone"
-                        dataKey="averageCostPerCall"
-                        stroke="#7c3aed"
+                        dataKey="minutesUsed"
+                        stroke="#db2777"
                         strokeWidth={2}
-                        name="Costo medio per chiamata"
-                        dot={{ fill: "#7c3aed", strokeWidth: 2, r: 3 }}
+                        name="Minuti utilizzati"
+                        dot={{ fill: "#db2777", strokeWidth: 2, r: 3 }}
                       />
                     </LineChart>
                   </ResponsiveContainer>

@@ -737,7 +737,7 @@ export default function CallsPage() {
 
   return (
     <>
-      <div className={`flex h-screen bg-gray-50 ${sidebarOpen ? "overflow-hidden" : ""}`}>
+      <div className={`flex h-full bg-gray-50 ${sidebarOpen ? "overflow-hidden" : ""}`}>
         <div className={`flex-1 flex flex-col ${sidebarOpen ? "lg:mr-[840px]" : ""} transition-all duration-300`}>
           <div className="bg-white border-b border-gray-200 p-3 sm:p-4 lg:p-6">
             <div className="flex flex-col gap-3 sm:gap-4">
@@ -803,11 +803,11 @@ export default function CallsPage() {
                       <thead className="bg-gray-50 sticky top-0">
                         <tr>
                           <th className="text-left py-3 px-4 text-sm font-medium text-gray-600">Da</th>
-                          <th className="text-left py-3 px-4 text-sm font-medium text-gray-600">Nome Da</th>
-                          <th className="text-left py-3 px-4 text-sm font-medium text-gray-600">Email Da</th>
+                          <th className="text-left py-3 px-4 text-sm font-medium text-gray-600 hidden 2xl:table-cell">Nome Da</th>
+                          <th className="text-left py-3 px-4 text-sm font-medium text-gray-600 hidden 2xl:table-cell">Email Da</th>
                           <th className="text-left py-3 px-4 text-sm font-medium text-gray-600">A</th>
-                          <th className="text-left py-3 px-4 text-sm font-medium text-gray-600">Nome A</th>
-                          <th className="text-left py-3 px-4 text-sm font-medium text-gray-600">Email A</th>
+                          <th className="text-left py-3 px-4 text-sm font-medium text-gray-600 hidden 2xl:table-cell">Nome A</th>
+                          <th className="text-left py-3 px-4 text-sm font-medium text-gray-600 hidden 2xl:table-cell">Email A</th>
                           <th className="text-left py-3 px-4 text-sm font-medium text-gray-600">Ora di inizio</th>
                           <th className="text-left py-3 px-4 text-sm font-medium text-gray-600">Durata</th>
                           <th className="text-left py-3 px-4 text-sm font-medium text-gray-600">Stato</th>
@@ -820,11 +820,11 @@ export default function CallsPage() {
                         {filteredCalls.map((call) => (
                           <tr key={call.id} className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer transition-colors" onClick={() => handleCallClick(call)}>
                             <td className="py-3 px-4 text-sm">{call.from || "N/D"}</td>
-                            <td className="py-3 px-4 text-sm">{call.fromName || "N/D"}</td>
-                            <td className="py-3 px-4 text-sm">{call.fromEmail || "N/D"}</td>
+                            <td className="py-3 px-4 text-sm hidden 2xl:table-cell">{call.fromName || "N/D"}</td>
+                            <td className="py-3 px-4 text-sm hidden 2xl:table-cell max-w-[150px] truncate" title={call.fromEmail || ""}>{call.fromEmail || "N/D"}</td>
                             <td className="py-3 px-4 text-sm">{call.to || "N/D"}</td>
-                            <td className="py-3 px-4 text-sm">{call.toName || "N/D"}</td>
-                            <td className="py-3 px-4 text-sm">{call.toEmail || "N/D"}</td>
+                            <td className="py-3 px-4 text-sm hidden 2xl:table-cell">{call.toName || "N/D"}</td>
+                            <td className="py-3 px-4 text-sm hidden 2xl:table-cell max-w-[150px] truncate" title={call.toEmail || ""}>{call.toEmail || "N/D"}</td>
                             <td className="py-3 px-4 text-sm">{formatDate(call.startTime)}</td>
                             <td className="py-3 px-4 text-sm">{formatDuration(call.duration)}</td>
                             <td className="py-3 px-4"><Badge className={getStatusBadgeColor(call.status)}>{getStatusText(call.status)}</Badge></td>

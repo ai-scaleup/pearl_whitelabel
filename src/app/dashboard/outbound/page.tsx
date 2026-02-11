@@ -5,13 +5,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 export default function Dashboard() {
   return (
-    /* Create a dedicated scrolling container for this page */
-    <div className="relative h-[100svh] w-full overflow-y-auto bg-white text-black">
-      <div className="mx-auto px-3 sm:px-4 lg:px-6 py-4 sm:py-6">
-        <Tabs defaultValue="overview" className="w-full">
+    /* Fixed-height container with flex layout */
+    <div className="relative h-[100svh] w-full flex flex-col bg-white text-black overflow-hidden">
+      <div className="flex-1 flex flex-col min-h-0 mx-auto px-3 sm:px-4 lg:px-6 py-4 sm:py-6 w-full">
+        <Tabs defaultValue="overview" className="flex-1 flex flex-col min-h-0 w-full">
           {/* Sticky, responsive tab bar */}
-          <div className="sticky top-0 z-10 -mx-3 sm:-mx-4 lg:-mx-6 mb-4 sm:mb-6 bg-white/80 backdrop-blur supports-[backdrop-filter]:bg-white/60">
-            <TabsList className="flex w-full gap-2 overflow-x-auto rounded-lg border bg-gray-50 p-1">
+          <div className="mb-4 sm:mb-6">
+            <TabsList className="flex w-full gap-2 overflow-x-auto rounded-lg border bg-gray-50 p-1 shrink-0">
               <TabsTrigger
                 value="overview"
                 className="flex-1 min-w-[8rem] whitespace-nowrap data-[state=active]:bg-white"
@@ -28,21 +28,22 @@ export default function Dashboard() {
                 value="calls"
                 className="flex-1 min-w-[8rem] whitespace-nowrap data-[state=active]:bg-white"
               >
-               Chiamate
+                Chiamate
               </TabsTrigger>
             </TabsList>
           </div>
 
-          {/* Content */}
-          <TabsContent value="overview" className="mt-0 sm:mt-2">
+          {/* Content Areas - Scroll independently if needed */}
+          <TabsContent value="overview" className="mt-0 sm:mt-2 flex-1 overflow-y-auto min-h-0">
             <OverviewPage />
           </TabsContent>
 
-          <TabsContent value="leads" className="mt-0 sm:mt-2">
+          <TabsContent value="leads" className="mt-0 sm:mt-2 flex-1 overflow-y-auto min-h-0">
             <LeadsPage />
           </TabsContent>
 
-          <TabsContent value="calls" className="mt-0 sm:mt-2 pb-8">
+          {/* Calls page handles its own layout/scroll, so just flex-1 here */}
+          <TabsContent value="calls" className="mt-0 sm:mt-2 flex-1 flex flex-col min-h-0 overflow-hidden pb-0">
             <CallsPage />
           </TabsContent>
         </Tabs>
