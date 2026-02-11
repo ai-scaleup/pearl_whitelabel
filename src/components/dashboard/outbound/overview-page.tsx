@@ -1310,21 +1310,7 @@ const OverviewPage = () => {
             {/* Campaign Status Section */}
             <CampaignStatusSection />
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 lg:gap-4">
-              {/* Card 2: Leads */}
-              <Card className="min-w-0">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">Leads</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">
-                    {selectedStatus?.details?.totalLeads ?? 0}
-                  </div>
-                </CardContent>
-              </Card>
 
-
-            </div>
 
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 lg:gap-6">
               <Card className="min-w-0">
