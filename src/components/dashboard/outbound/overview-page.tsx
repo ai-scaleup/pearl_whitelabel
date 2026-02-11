@@ -8,10 +8,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import {
   Loader2,
   RefreshCw,
-  TrendingUp,
-  Phone,
-  Users,
-  BarChart3,
   Home,
   Clock,
   Activity,
@@ -33,7 +29,6 @@ import {
   Pie,
   Cell,
   Tooltip,
-  type TooltipProps,
 } from "recharts"
 import * as React from "react"
 import * as ToastPrimitives from "@radix-ui/react-toast"
@@ -1633,6 +1628,7 @@ const OverviewPage = () => {
                       />
                       <Tooltip
                         labelFormatter={(v) => new Date(v).toLocaleDateString()}
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
                         formatter={(value: number, name: string, props: any) => {
                           if (name === "Durata media") return [`${value}s`, name]
                           if (name === "Minuti utilizzati") {
