@@ -57,13 +57,13 @@ export interface CallDetails {
 export interface CallsFilters {
   skip: number
   limit: number
-  sortProp: string
-  isAscending: boolean
+  sortProp?: string
+  isAscending?: boolean
   fromDate: string
   toDate: string
-  tags: string[]
+
   statuses: number[]
-  conversationStatuses: number[]
+  conversationStatuses?: number[]
 }
 
 export interface CampaignData {

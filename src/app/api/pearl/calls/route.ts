@@ -27,24 +27,24 @@ interface CallsPostBody {
   limit?: number;
   sortProp?: string;
   isAscending?: boolean;
-  fromDate?: string; // ISO string (optional)
-  toDate?: string;   // ISO string (optional)
-  tags?: Array<string | number>; // accept numbers/strings; we'll coerce to strings
-  statuses?: Array<number | string>;
-  conversationStatuses?: Array<number | string>;
-}
-
-// Upstream payload (what NLPEARL expects)
-interface UpstreamPayload {
-  skip?: number;
-  limit?: number;
-  sortProp?: string;
-  isAscending?: boolean;
   fromDate?: string;
   toDate?: string;
-  tags?: string[];
-  status?: number[];
-  conversationStatus?: number[];
+
+  statuses?: Array<number | string>;
+  conversationStatuses?: Array<number | string>;
+  searchInput?: string;
+}
+
+// Upstream payload (what NLPearl v2 expects)
+// Based on: POST /v2/Pearl/{pearlId}/Calls
+// Only these fields are supported: fromDate, toDate, skip, limit, statuses, search
+interface UpstreamPayload {
+  fromDate: string;
+  toDate: string;
+  skip: number;
+  limit: number;
+  statuses?: number[];
+  search: string;
 }
 
 const toNumArray = (value: unknown): number[] =>
@@ -54,18 +54,14 @@ const toNumArray = (value: unknown): number[] =>
       .filter((v) => Number.isFinite(v))
     : [];
 
-const toStrArray = (value: unknown): string[] =>
-  Array.isArray(value)
-    ? value
-      .map((v) =>
-        typeof v === "string"
-          ? v
-          : v == null
-            ? ""
-            : String(v),
-      )
-      .filter((s) => s.length > 0)
-    : [];
+/** Default date range: last 30 days */
+function getDefaultDateRange() {
+  const to = new Date();
+  const from = new Date();
+  from.setDate(from.getDate() - 30);
+  const fmt = (d: Date) => d.toISOString().split("T")[0];
+  return { from: fmt(from), to: fmt(to) };
+}
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
@@ -78,13 +74,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       bearerToken,
       skip = 0,
       limit = 100,
-      sortProp = "startTime",
-      isAscending = false,
       fromDate,
       toDate,
-      tags = [],
       statuses = [],
-      conversationStatuses = [],
     } = body;
 
     if (!outboundId || !bearerToken) {
@@ -95,25 +87,27 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
 
     const base = requireEnv("NLPEARL_API_BASE_URL");
-    // Use v2 Pearl endpoint (pearlId = outboundId)
     const url = `${base}/Pearl/${encodeURIComponent(outboundId)}/Calls`;
 
     const statusArr = toNumArray(statuses);
-    const convArr = toNumArray(conversationStatuses);
-    const tagArr = toStrArray(tags);
 
+    /** Normalize date to YYYY-MM-DD format */
+    const normDate = (d: string): string => d.split("T")[0];
+
+    // fromDate and toDate are REQUIRED by NLPearl v2
+    const defaults = getDefaultDateRange();
     const payload: UpstreamPayload = {
+      fromDate: normDate(fromDate || defaults.from),
+      toDate: normDate(toDate || defaults.to),
       skip,
       limit,
-      sortProp,
-      isAscending,
+      search: "",
     };
 
-    if (fromDate) payload.fromDate = fromDate;
-    if (toDate) payload.toDate = toDate;
-    if (tagArr.length > 0) payload.tags = tagArr;
-    if (statusArr.length > 0) payload.status = statusArr;
-    if (convArr.length > 0) payload.conversationStatus = convArr;
+    if (statusArr.length > 0) payload.statuses = statusArr;
+
+    console.log("[/api/pearl/calls] upstream URL:", url);
+    console.log("[/api/pearl/calls] upstream payload:", JSON.stringify(payload));
 
     const res = await fetch(url, {
       method: "POST",
@@ -127,6 +121,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     });
 
     const text = await res.text();
+
+    console.log("[/api/pearl/calls] response status:", res.status, "body preview:", text.substring(0, 300));
+
+    if (!res.ok) {
+      console.error("[/api/pearl/calls] upstream error:", res.status, "body:", text);
+    }
 
     let data: Json | { raw: string };
     try {

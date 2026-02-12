@@ -48,8 +48,9 @@ export async function GET(
     }
 
     const base = requireEnv("WHITE_LABEL_API_BASE_URL");
-    const prefix = cleanPrefix(process.env.WHITE_LABEL_API_PREFIX || "api/v1");
-    const url = `${base}/${prefix}/getUser/${encodeURIComponent(userId)}`;
+    // Use the new endpoint implemented in the backend: /users/oauth/:oauthId
+    // We bypass the prefix since the backend controller has no global prefix
+    const url = `${base}/users/oauth/${encodeURIComponent(userId)}`;
 
     const res = await fetch(url, {
       headers: { "Cache-Control": "no-cache" },

@@ -12,7 +12,7 @@ type Json =
   | { [key: string]: Json };
 
 export async function apiGetUser(userId: string): Promise<UserData> {
-  const res = await fetch(`/api/pearl/user?userId=${encodeURIComponent(userId)}`, { cache: "no-store" });
+  const res = await fetch(`/api/pearl/user/${encodeURIComponent(userId)}`, { cache: "no-store" });
   if (!res.ok) throw new Error(`getUser failed ${res.status}: ${await res.text()}`);
   return res.json();
 }

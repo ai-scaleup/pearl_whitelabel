@@ -338,7 +338,7 @@ const ANALYTICS_API_BASE_URL = process.env.NLPEARL_API_BASE_URL || "https://api.
 // const OUR_SMS_RATE = 0.16 as const
 // void OUR_SMS_RATE
 
-const MIN_STATS_DATE = new Date("2026-02-01T00:00:00Z")
+const MIN_STATS_DATE = new Date("2024-01-01T00:00:00Z")
 
 const getDefaultDateRange = () => {
   const to = new Date()
@@ -930,7 +930,21 @@ const OverviewPage = () => {
 
         // Only try to load analytics if we have valid outboundId and bearerToken
         if (campaign.outboundId && campaign.bearerToken) {
+          // Persist immediately to ensure selection sticks
+          saveToLocalStorage(STORAGE_KEYS.BEARER_TOKEN, campaign.bearerToken)
+          saveToLocalStorage(STORAGE_KEYS.OUTBOUND_ID, campaign.outboundId)
+          saveToLocalStorage(STORAGE_KEYS.CAMPAIGN_ID, campaign.id)
+
+          if (typeof window !== "undefined") {
+            window.dispatchEvent(new CustomEvent('campaignChanged'))
+          }
+
+          // Clear old data and show loading
+          setAnalyticsOverviewData(null)
+          setAnalyticsPerfData(null)
+          setAnalyticsTimelineData(null)
           setAnalyticsLoading(true)
+
           try {
             const initial = await getAnalytics(campaign.outboundId, campaign.bearerToken, dateRange, campaign.id)
             setAnalyticsOverviewData(initial)
@@ -948,6 +962,14 @@ const OverviewPage = () => {
           setAnalyticsPerfData(null)
           setAnalyticsTimelineData(null)
           setAnalyticsLoading(false)
+
+          // Still clean up storage if invalid
+          removeFromLocalStorage(STORAGE_KEYS.BEARER_TOKEN)
+          removeFromLocalStorage(STORAGE_KEYS.OUTBOUND_ID)
+          saveToLocalStorage(STORAGE_KEYS.CAMPAIGN_ID, campaign.id)
+          if (typeof window !== "undefined") {
+            window.dispatchEvent(new CustomEvent('campaignChanged'))
+          }
         }
       }
     },

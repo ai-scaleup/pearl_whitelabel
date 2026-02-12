@@ -15,7 +15,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Loader2, Edit, RefreshCw, Phone, X, ArrowRight, Filter, MessageSquare, ChevronDown, AlertCircle } from "lucide-react"
+import { Loader2, Edit, RefreshCw, Phone, X, ArrowRight, Filter, ChevronDown, AlertCircle } from "lucide-react"
 import * as ToastPrimitives from "@radix-ui/react-toast"
 import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/lib/utils"
@@ -199,28 +199,47 @@ const getDefaultDateRange = () => {
   const to = new Date()
   const from = new Date()
   from.setDate(from.getDate() - 30)
-  return { from: from.toISOString(), to: to.toISOString() }
+  // NLPearl v2 expects simple date format: YYYY-MM-DD
+  const fmt = (d: Date) => d.toISOString().split("T")[0]
+  return { from: fmt(from), to: fmt(to) }
 }
 
 /** Typed status maps (avoid `any`) */
 const STATUS_TEXT: Record<number, string> = {
+  1: "Nuovo",
   3: "In corso",
   4: "Completata",
   5: "Occupato",
   6: "Fallita",
   7: "Nessuna risposta",
   8: "Annullata",
-}
-const getStatusText = (s: number) => STATUS_TEXT[s] ?? "Sconosciuto"
-
-const CONV_STATUS_TEXT: Record<number, string> = {
   10: "Da riprovare",
   20: "In coda chiamate",
+  30: "Prefisso errato",
+  40: "In chiamata",
   70: "Segreteria",
   100: "Riuscita",
   110: "Non riuscita",
   130: "Completata",
   150: "Irreperibile",
+  220: "Blacklist",
+  300: "Abbandono coda",
+}
+const getStatusText = (s: number) => STATUS_TEXT[s] ?? "Sconosciuto"
+
+const CONV_STATUS_TEXT: Record<number, string> = {
+  1: "Nuovo",
+  10: "Da riprovare",
+  20: "In coda",
+  30: "Prefisso errato",
+  40: "In chiamata",
+  70: "Segreteria",
+  100: "Riuscita",
+  110: "Non riuscita",
+  130: "Completata",
+  150: "Irreperibile",
+  220: "Blacklist",
+  300: "Abbandono coda",
   500: "Errore",
 }
 const getConversationStatusText = (s: number) => CONV_STATUS_TEXT[s] ?? "Sconosciuto"
@@ -243,77 +262,139 @@ const SENTIMENT_COLOR: Record<number, string> = {
 }
 const getSentimentColor = (s: number) => SENTIMENT_COLOR[s] ?? "text-gray-600"
 
-const TAG_COLOR_CLASSES = [
-  "bg-blue-500", "bg-pink-400", "bg-teal-500", "bg-amber-400", "bg-violet-500", "bg-rose-500", "bg-lime-500", "bg-cyan-500", "bg-indigo-500", "bg-fuchsia-500",
-] as const
-const hashString = (s: string) => { let h = 0; for (let i = 0; i < s.length; i++) h = (h << 5) - h + s.charCodeAt(i); return Math.abs(h) }
-const tagBg = (tag: string) => TAG_COLOR_CLASSES[hashString(tag) % TAG_COLOR_CLASSES.length]
 
-const formatDuration = (s: number) => `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`
+
+const formatDuration = (s: number) => {
+  const m = Math.ceil(s / 60)
+  return `${m} minute${m !== 1 ? "s" : ""}`
+}
 const formatDate = (iso: string) => new Date(iso).toLocaleString()
 
-/** Apply filters locally to guarantee UI correctness even if upstream ignores filters */
-function applyLocalFilters(list: CallData[], f: CallsFilters) {
-  let r = list
-  if (f.statuses?.length) {
-    const set = new Set(f.statuses)
-    r = r.filter((c) => set.has(c.status))
-  }
-  if (f.conversationStatuses?.length) {
-    const set = new Set(f.conversationStatuses)
-    r = r.filter((c) => set.has(c.conversationStatus))
-  }
-  if (f.tags?.length) {
-    const set = new Set(f.tags)
-    r = r.filter((c) => (c.tags ?? []).some((t) => set.has(t)))
-  }
-  return r
-}
+
 
 /* ----------------------------- UI components ---------------------------- */
 
-const TagDots: React.FC<{ tags?: string[]; max?: number; className?: string }> = ({ tags = [], max = 3, className }) => {
-  if (!tags || tags.length === 0) return <span className="text-xs text-gray-400">—</span>
-  const shown = tags.slice(0, max); const remaining = tags.length - shown.length
-  return (
-    <div className={cn("flex items-center -space-x-1.5", className)}>
-      {shown.map((t, i) => <div key={`${t}-${i}`} title={t} aria-label={t} className={cn("h-5 w-5 rounded-full border-2 border-white shadow-sm", tagBg(t))} />)}
-      {remaining > 0 && <div className="h-5 w-5 rounded-full border-2 border-white bg-gray-200 text-[10px] flex items-center justify-center font-medium">+{remaining}</div>}
-    </div>
-  )
-}
 
-const TagSelector: React.FC<{ availableTags: string[]; selectedTags: string[]; onTagsChange: (tags: string[]) => void }> = ({ availableTags, selectedTags, onTagsChange }) => {
+
+
+
+
+
+const UnifiedStatusSelector: React.FC<{ selectedStatuses: number[]; onStatusChange: (statusId: number | null) => void }> = ({ selectedStatuses, onStatusChange }) => {
   const [isOpen, setIsOpen] = useState(false)
-  const toggleTag = (t: string) => onTagsChange(selectedTags.includes(t) ? selectedTags.filter((x) => x !== t) : [...selectedTags, t])
+  const [search, setSearch] = useState("")
+
+  // Combine all relevant statuses. We primarily use Conversation Statuses as requested.
+  // We map them to { id, label }
+  const options = Object.entries(CONV_STATUS_TEXT).map(([id, label]) => ({
+    id: Number(id),
+    label: label
+  }))
+
+  const filteredOptions = options.filter(opt => opt.label.toLowerCase().includes(search.toLowerCase()))
+
+  const handleSelect = (id: number) => {
+    // Toggle: if already selected, clear it (or distinct behavior if multiple allowed, but request implies single selection logic "like this")
+    // The user json has "statuses": [100], asking for array. 
+    // But the UI screenshot looks like a single select or multi select. 
+    // "like this" usually implies single select if it closes. 
+    // Let's support toggling or setting. 
+    // For now, let's assume we want to SET this status as the filter (single select behavior effectively, or add directly).
+    // The user example has "statuses": [100].
+    // Let's implement as single select for "Status" that pushes to the array.
+
+    // Actually, looking at the previous implementation, it supported multi-select.
+    // However, the screenshot shows a standard dropdown list.
+    // I will implement as: click -> selects this ONE status (clearing others) to match "statuses: [100]" example which looks completely specific.
+    // OR we can support multi-select. 
+    // The prompt says "here just work based on status no other things ... statuses: [100]".
+    // This implies setting the filter to this status. 
+
+    // Let's stick to: Click -> Selects this status (exclusively? or toggles?)
+    // Existing selectors were multi-select. 
+    // But "Unified" implies a simpler "Status" dropdown. 
+    // I will make it toggle-able but effectively treating it as adding/removing from the list. 
+    // Wait, the prompt implies "statuses": [100] as the result. 
+
+    // Let's implement Multi-select capability but visually similar to the screenshot.
+    // But wait, standard Combobox usually closes on selection.
+
+    // Refined plan: Click -> Toggle selection. If it's a "Filter", usually multi-select is good.
+    // But user sample request: "statuses": [100].
+    // I'll assume single select is acceptable or preferred given the "clean" screenshot, BUT standard filters often allow multiple.
+    // I'll stick to single select for now to match the [100] example precisely, or allow the parent to handle array.
+    // The prop `onStatusChange` taking `number | null` implies single change event.
+    // I will treat it as "Select this status".
+
+    onStatusChange(id)
+    setIsOpen(false)
+  }
+
+  const selectedLabel = selectedStatuses.length === 1 ? CONV_STATUS_TEXT[selectedStatuses[0]] : selectedStatuses.length > 1 ? `${selectedStatuses.length} selezionati` : "Stato"
+
   return (
     <div className="relative">
-      <Button variant="outline" size="sm" onClick={() => setIsOpen(!isOpen)} className="text-sm border-slate-200 hover:bg-slate-50">
-        <Filter className="h-4 w-4 mr-2" /> Tag ({selectedTags.length})
+      <Button variant="outline" onClick={() => setIsOpen(!isOpen)} className="w-[180px] justify-between border-slate-200">
+        {selectedLabel === "Stato" ? <span className="text-slate-500">Stato</span> : <span>{selectedLabel}</span>}
+        <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
       </Button>
       {isOpen && (
         <>
-          <div className="fixed inset-0 z-10" onClick={() => setIsOpen(false)} />
-          <div className="absolute top-full left-0 mt-1 w-64 bg-white border border-slate-200 rounded-lg shadow-lg z-20 max-h-64 overflow-y-auto">
-            <div className="p-3 border-b border-slate-100 flex items-center justify-between">
-              <span className="text-sm font-medium">Filtra per tag</span>
-              {selectedTags.length > 0 && (
-                <Button variant="ghost" size="sm" onClick={() => onTagsChange([])} className="text-xs h-6 px-2">
-                  Cancella tutto
-                </Button>
-              )}
+          <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
+          <div className="absolute top-full left-0 mt-1 w-[200px] bg-white border border-slate-200 rounded-md shadow-lg z-50 overflow-hidden">
+            <div className="flex items-center border-b px-3">
+              <Filter className="mr-2 h-4 w-4 shrink-0 opacity-50" />
+              <input
+                className="flex h-10 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-slate-500 disabled:cursor-not-allowed disabled:opacity-50"
+                placeholder="Cerca..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                autoFocus
+              />
             </div>
-            <div className="p-2 space-y-1">
-              {availableTags.length === 0 ? (
-                <div className="text-sm text-gray-500 p-2">Nessun tag disponibile</div>
+            <div className="max-h-[300px] overflow-y-auto p-1">
+              <div
+                className={cn(
+                  "relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-slate-100 data-[disabled]:pointer-events-none data-[disabled]:opacity-50 cursor-pointer",
+                  selectedStatuses.length === 0 && "bg-slate-100 font-medium"
+                )}
+                onClick={() => { onStatusChange(null); setIsOpen(false) }}
+              >
+                <div className={cn("mr-2 flex h-4 w-4 items-center justify-center opacity-0", selectedStatuses.length === 0 && "opacity-100")}>
+                  <svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg" className="h-4 w-4"><path d="M11.4669 3.72684C11.7558 3.91574 11.8369 4.30308 11.648 4.59198L7.39799 11.092C7.29783 11.2452 7.13556 11.3467 6.95402 11.3699C6.77247 11.3931 6.58989 11.3355 6.45446 11.2124L3.70446 8.71241C3.44905 8.48022 3.43023 8.08494 3.66242 7.82953C3.89461 7.57412 4.28989 7.55529 4.5453 7.78749L6.75292 9.79441L10.6018 3.90792C10.7907 3.61902 11.178 3.53795 11.4669 3.72684Z" fill="currentColor" fillRule="evenodd" clipRule="evenodd" /></svg>
+                </div>
+                Tutti gli stati
+              </div>
+              {filteredOptions.length === 0 ? (
+                <div className="py-6 text-center text-sm">Nessuno stato trovato.</div>
               ) : (
-                availableTags.map((tag) => (
-                  <div key={tag} className="flex items-center space-x-2 p-2 hover:bg-slate-50 rounded cursor-pointer" onClick={() => toggleTag(tag)}>
-                    <input type="checkbox" checked={selectedTags.includes(tag)} onChange={() => toggleTag(tag)} className="rounded border-slate-300" />
-                    <div className="flex items-center space-x-2 flex-1">
-                      <div className={cn("h-3 w-3 rounded-full", tagBg(tag))} />
-                      <span className="text-sm">{tag}</span>
+                filteredOptions.map((option) => (
+                  <div
+                    key={option.id}
+                    className={cn(
+                      "relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-slate-100 data-[disabled]:pointer-events-none data-[disabled]:opacity-50 cursor-pointer",
+                      selectedStatuses.includes(option.id) && "bg-slate-100 font-medium"
+                    )}
+                    onClick={() => handleSelect(option.id)}
+                  >
+                    <div className={cn("mr-2 flex h-4 w-4 items-center justify-center opacity-0", selectedStatuses.includes(option.id) && "opacity-100")}>
+                      <svg
+                        width="15"
+                        height="15"
+                        viewBox="0 0 15 15"
+                        fill="none"
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="h-4 w-4"
+                      >
+                        <path
+                          d="M11.4669 3.72684C11.7558 3.91574 11.8369 4.30308 11.648 4.59198L7.39799 11.092C7.29783 11.2452 7.13556 11.3467 6.95402 11.3699C6.77247 11.3931 6.58989 11.3355 6.45446 11.2124L3.70446 8.71241C3.44905 8.48022 3.43023 8.08494 3.66242 7.82953C3.89461 7.57412 4.28989 7.55529 4.5453 7.78749L6.75292 9.79441L10.6018 3.90792C10.7907 3.61902 11.178 3.53795 11.4669 3.72684Z"
+                          fill="currentColor"
+                          fillRule="evenodd"
+                          clipRule="evenodd"
+                        />
+                      </svg>
                     </div>
+                    {option.label}
                   </div>
                 ))
               )}
@@ -325,79 +406,13 @@ const TagSelector: React.FC<{ availableTags: string[]; selectedTags: string[]; o
   )
 }
 
-const CallStatusSelector: React.FC<{ selectedStatuses: number[]; onStatusChange: (value: string) => void }> = ({ selectedStatuses, onStatusChange }) => {
-  const [isOpen, setIsOpen] = useState(false)
-  const handle = (v: string) => { onStatusChange(v); setIsOpen(false) }
-  return (
-    <div className="relative">
-      <Button variant="outline" size="sm" onClick={() => setIsOpen(!isOpen)} className="text-sm border-slate-200 hover:bg-slate-50">
-        <Filter className="h-4 w-4 mr-2" /> Stato
-        <span className="ml-1 text-xs text-slate-500">{selectedStatuses.length > 0 && `(${selectedStatuses.length})`}</span>
-      </Button>
-      {isOpen && (
-        <>
-          <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
-          <div className="absolute top-full left-0 mt-1 w-56 bg-white border border-slate-200 rounded-lg shadow-xl z-50 max-h-80 overflow-y-auto">
-            <div className="p-3 border-b border-slate-100"><span className="text-sm font-medium">Stato Chiamata</span></div>
-            <div className="p-2 space-y-1">
-              <div className="flex items-center space-x-2 p-2 hover:bg-slate-50 rounded cursor-pointer" onClick={() => handle("call-all")}>
-                <input type="radio" name="call-status-filter" className="rounded border-slate-300" checked={selectedStatuses.length === 0} readOnly />
-                <span className="text-sm">Tutti gli stati</span>
-              </div>
-              <div className="border-t border-slate-100 my-2" />
-              {[3, 4, 5, 6, 7, 8].map((v) => (
-                <div key={v} className="flex items-center space-x-2 p-2 hover:bg-slate-50 rounded cursor-pointer" onClick={() => handle(`status-${v}`)}>
-                  <input type="radio" name="call-status-filter" className="rounded border-slate-300" checked={selectedStatuses.includes(v)} readOnly />
-                  <span className="text-sm">{getStatusText(v)}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </>
-      )}
-    </div>
-  )
-}
 
-const ConversationStatusSelector: React.FC<{ selectedStatuses: number[]; onStatusChange: (value: string) => void }> = ({ selectedStatuses, onStatusChange }) => {
-  const [isOpen, setIsOpen] = useState(false)
-  const handle = (v: string) => { onStatusChange(v); setIsOpen(false) }
-  return (
-    <div className="relative">
-      <Button variant="outline" size="sm" onClick={() => setIsOpen(!isOpen)} className="text-sm border-slate-200 hover:bg-slate-50">
-        <MessageSquare className="h-4 w-4 mr-2" /> Conversazione
-        <span className="ml-1 text-xs text-slate-500">{selectedStatuses.length > 0 && `(${selectedStatuses.length})`}</span>
-      </Button>
-      {isOpen && (
-        <>
-          <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
-          <div className="absolute top-full left-0 mt-1 w-56 bg-white border border-slate-200 rounded-lg shadow-xl z-50 max-h-80 overflow-y-auto">
-            <div className="p-3 border-b border-slate-100"><span className="text-sm font-medium">Stato Conversazione</span></div>
-            <div className="p-2 space-y-1">
-              <div className="flex items-center space-x-2 p-2 hover:bg-slate-50 rounded cursor-pointer" onClick={() => handle("conversation-all")}>
-                <input type="radio" name="conversation-status-filter" className="rounded border-slate-300" checked={selectedStatuses.length === 0} readOnly />
-                <span className="text-sm">Tutti gli stati</span>
-              </div>
-              <div className="border-t border-slate-100 my-2" />
-              {[10, 20, 70, 100, 110, 130, 150, 500].map((v) => (
-                <div key={v} className="flex items-center space-x-2 p-2 hover:bg-slate-50 rounded cursor-pointer" onClick={() => handle(`conversation-${v}`)}>
-                  <input type="radio" name="conversation-status-filter" className="rounded border-slate-300" checked={selectedStatuses.includes(v)} readOnly />
-                  <span className="text-sm">{getConversationStatusText(v)}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </>
-      )}
-    </div>
-  )
-}
 
 const LimitSelector: React.FC<{ limit: number; onLimitChange: (limit: number) => void }> = ({ limit, onLimitChange }) => {
   const [isOpen, setIsOpen] = useState(false)
   const [customLimit, setCustomLimit] = useState("")
   const [showCustomInput, setShowCustomInput] = useState(false)
-  const predefined = [25, 50, 100, 250, 500, 1000, 2500, 5000]
+  const predefined = [25, 50, 100]
   const pick = (n: number) => { onLimitChange(n); setIsOpen(false); setShowCustomInput(false) }
   const submit = () => {
     const v = Number.parseInt(customLimit)
@@ -459,7 +474,7 @@ export default function CallsPage() {
   const [callDetails, setCallDetails] = useState<CallDetails | null>(null)
   const [callDetailsLoading, setCallDetailsLoading] = useState(false)
   const [activeRightTab, setActiveRightTab] = useState<"transcript" | "events">("transcript")
-  const [availableTags, setAvailableTags] = useState<string[]>([])
+
   const [campaigns, setCampaigns] = useState<CampaignData[]>([])
   const [selectedCampaign, setSelectedCampaign] = useState<CampaignData | null>(null)
   const [campaignsLoading, setCampaignsLoading] = useState(false)
@@ -471,7 +486,6 @@ export default function CallsPage() {
     isAscending: false,
     fromDate: getDefaultDateRange().from,
     toDate: getDefaultDateRange().to,
-    tags: [],
     statuses: [],
     conversationStatuses: [],
   })
@@ -484,8 +498,9 @@ export default function CallsPage() {
 
   const canSubmit = useMemo(() => authId.trim().length > 0 && token.trim().length > 0 && !submitting, [authId, token, submitting])
 
-  /** Derived filtered list (no missing-deps warnings) */
-  const filteredCalls = useMemo(() => applyLocalFilters(calls, filters), [calls, filters])
+
+  /** Client-side filtering removed - we now filter on server via 'statuses' */
+  const filteredCalls = calls
 
   /* ------------------------------- Fetchers ------------------------------- */
 
@@ -520,15 +535,13 @@ export default function CallsPage() {
         filters: {
           skip: f.skip,
           limit: f.limit,
-          sortProp: f.sortProp,
-          isAscending: f.isAscending,
           fromDate: f.fromDate,
           toDate: f.toDate,
-          tags: f.tags,
           statuses: f.statuses,
-          conversationStatuses: f.conversationStatuses,
         },
       })
+
+      console.log("[fetchCalls] response data:", JSON.stringify({ count: data.count, resultsLength: data.results?.length, resultsIsArray: Array.isArray(data.results), keys: Object.keys(data) }))
 
       if (!Array.isArray(data.results)) {
         toast({ title: "Errore", description: "Formato di risposta API non valido.", variant: "destructive" })
@@ -541,9 +554,7 @@ export default function CallsPage() {
       const total: number = (data.count ?? data.totalCount ?? data.results.length)
       setTotalCalls(total)
 
-      const allTags = new Set<string>()
-      data.results.forEach((c) => (c.tags || []).forEach((t) => t && allTags.add(t)))
-      setAvailableTags(Array.from(allTags).sort())
+
 
       if (showSuccessToast) toast({ title: "Operazione riuscita", description: `Caricate ${data.results.length} chiamate con successo!` })
     } catch (e: unknown) {
@@ -553,6 +564,10 @@ export default function CallsPage() {
       setCalls([]); setTotalCalls(0)
     } finally { setCallsLoading(false) }
   }, [filters, toast])
+
+  // Ref to always hold the latest fetchCalls to avoid stale closures in effects
+  const fetchCallsRef = React.useRef(fetchCalls)
+  useEffect(() => { fetchCallsRef.current = fetchCalls }, [fetchCalls])
 
   const fetchCallDetails = useCallback(async (callId: string) => {
     const bearer = getFromLocalStorage(STORAGE_KEYS.BEARER_TOKEN)
@@ -586,7 +601,7 @@ export default function CallsPage() {
           setSelectedCampaign(campaign)
         }
         setIsConfigured(true)
-        await fetchCalls()
+        await fetchCallsRef.current()
       } else if (list.length === 0 && showToast) {
         toast({ title: "Nessuna campagna", description: "Nessuna campagna trovata per questa email.", variant: "destructive" })
       }
@@ -598,7 +613,7 @@ export default function CallsPage() {
       toast({ title: "Errore", description: "Impossibile recuperare le campagne.", variant: "destructive" })
       setCampaigns([]); return []
     } finally { setCampaignsLoading(false) }
-  }, [fetchCalls, toast])
+  }, [toast])
 
   const handleSubmitCredentials = useCallback(async () => {
     if (!canSubmit) {
@@ -622,24 +637,11 @@ export default function CallsPage() {
 
   /* ------------------------------- Filters UI ------------------------------ */
 
-  const handleTagsChange = useCallback((tags: string[]) => {
-    const nf = { ...filters, tags, skip: 0 }
-    setFilters(nf); fetchCalls(nf)
-  }, [filters, fetchCalls])
 
-  const handleCallStatusChange = useCallback((value: string) => {
-    const nf =
-      value === "call-all" ? { ...filters, statuses: [], skip: 0 }
-        : { ...filters, statuses: [Number.parseInt(value.replace("status-", ""))], skip: 0 }
-    setFilters(nf); fetchCalls(nf)
-  }, [filters, fetchCalls])
 
-  const handleConversationStatusChange = useCallback((value: string) => {
-    const nf =
-      value === "conversation-all" ? { ...filters, conversationStatuses: [], skip: 0 }
-        : { ...filters, conversationStatuses: [Number.parseInt(value.replace("conversation-", ""))], skip: 0 }
-    setFilters(nf); fetchCalls(nf)
-  }, [filters, fetchCalls])
+
+
+
 
   const handleRefresh = useCallback(async () => {
     if (refreshing) return
@@ -673,11 +675,11 @@ export default function CallsPage() {
 
   useEffect(() => {
     if (!isLoaded) return
-    if (isConfigured) fetchCalls()
+    if (isConfigured) fetchCallsRef.current()
     else if (!campaignsLoading && campaigns.length === 0) setShowModal(true)
-  }, [isLoaded, isConfigured, campaignsLoading, campaigns.length, fetchCalls])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoaded, isConfigured, campaignsLoading, campaigns.length])
 
-  // Listen for campaign changes from other pages (custom event)
   useEffect(() => {
     const handleCampaignChange = () => {
       // Re-read credentials from localStorage
@@ -691,7 +693,7 @@ export default function CallsPage() {
           const found = campaigns.find(c => c.id === cid)
           if (found) setSelectedCampaign(found)
         }
-        fetchCalls()
+        fetchCallsRef.current()
       } else {
         setIsConfigured(false)
         setSelectedCampaign(null)
@@ -703,7 +705,7 @@ export default function CallsPage() {
     return () => {
       window.removeEventListener('campaignChanged', handleCampaignChange)
     }
-  }, [fetchCalls, campaigns])
+  }, [campaigns])
 
   /* ------------------------------ Loading gates ----------------------------- */
 
@@ -747,7 +749,7 @@ export default function CallsPage() {
                     Dashboard Chiamate
                     {selectedCampaign && <span className="ml-2 font-medium text-slate-500">- {selectedCampaign.campaignName}</span>}
                   </h1>
-                  {totalCalls > 0 && <Badge variant="secondary" className="text-xs sm:text-sm bg-blue-100 text-blue-800">{totalCalls.toLocaleString()} totali</Badge>}
+                  <Badge variant="secondary" className="text-xs sm:text-sm bg-blue-100 text-blue-800">{totalCalls.toLocaleString()} totali</Badge>
                 </div>
                 <div className="flex w-full justify-center sm:flex-row sm:items-center sm:justify-end gap-2 sm:gap-3">
                   <Button variant="outline" size="sm" onClick={handleRefresh} disabled={refreshing || loading} className="text-xs sm:text-sm bg-transparent transition-all duration-200 hover:shadow-md self-start sm:self-auto">
@@ -773,13 +775,41 @@ export default function CallsPage() {
           )}
 
           {/* Filters */}
+          {/* Filters */}
           {isConfigured && (
             <div className="bg-white border-b border-gray-200 p-3 sm:p-4">
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center space-y-2 sm:space-y-0 sm:space-x-4">
                 <div className="flex space-x-2 sm:space-x-4">
-                  <TagSelector availableTags={availableTags} selectedTags={filters.tags} onTagsChange={handleTagsChange} />
-                  <CallStatusSelector selectedStatuses={filters.statuses} onStatusChange={handleCallStatusChange} />
-                  <ConversationStatusSelector selectedStatuses={filters.conversationStatuses} onStatusChange={handleConversationStatusChange} />
+                  {/* Unified Status Selector - Filters by 'statuses' on server, using 'Conversation Status' labels */}
+                  <UnifiedStatusSelector
+                    selectedStatuses={filters.statuses}
+                    onStatusChange={(id) => {
+                      // Logic: 
+                      // If id is null (cleared) -> empty list
+                      // If id is provided -> set as [id] (Single select behavior for now to match specific request)
+                      // OR toggle if we want multi-select. 
+                      // User request: "statuses": [100]. 
+                      // Let's implement toggle behavior to allow [100, 110] if needed, or just set.
+                      // Given "UnifiedStatusSelector" above calls with `handleSelect(id)`, let's make it toggle.
+
+                      let newStatuses = [...filters.statuses]
+                      if (id === null) {
+                        newStatuses = []
+                      } else {
+                        if (newStatuses.includes(id)) {
+                          newStatuses = newStatuses.filter(s => s !== id)
+                        } else {
+                          // If single select is preferred by UI style:
+                          newStatuses = [id]
+                          // If multi-select: newStatuses.push(id)
+                        }
+                      }
+
+                      const nf = { ...filters, statuses: newStatuses, skip: 0 }
+                      setFilters(nf)
+                      fetchCalls(nf)
+                    }}
+                  />
                   <LimitSelector limit={filters.limit} onLimitChange={(n) => { const nf = { ...filters, limit: n, skip: 0 }; setFilters(nf); fetchCalls(nf) }} />
                 </div>
               </div>
@@ -809,10 +839,10 @@ export default function CallsPage() {
                           <th className="text-left py-3 px-4 text-sm font-medium text-gray-600 hidden 2xl:table-cell">Nome A</th>
                           <th className="text-left py-3 px-4 text-sm font-medium text-gray-600 hidden 2xl:table-cell">Email A</th>
                           <th className="text-left py-3 px-4 text-sm font-medium text-gray-600">Ora di inizio</th>
-                          <th className="text-left py-3 px-4 text-sm font-medium text-gray-600">Durata</th>
+
                           <th className="text-left py-3 px-4 text-sm font-medium text-gray-600">Stato</th>
                           <th className="text-left py-3 px-4 text-sm font-medium text-gray-600">Conversazione</th>
-                          <th className="text-left py-3 px-4 text-sm font-medium text-gray-600">Tag</th>
+
                           <th className="text-left py-3 px-4 text-sm font-medium text-gray-600">Azioni</th>
                         </tr>
                       </thead>
@@ -826,10 +856,10 @@ export default function CallsPage() {
                             <td className="py-3 px-4 text-sm hidden 2xl:table-cell">{call.toName || "N/D"}</td>
                             <td className="py-3 px-4 text-sm hidden 2xl:table-cell max-w-[150px] truncate" title={call.toEmail || ""}>{call.toEmail || "N/D"}</td>
                             <td className="py-3 px-4 text-sm">{formatDate(call.startTime)}</td>
-                            <td className="py-3 px-4 text-sm">{formatDuration(call.duration)}</td>
+
                             <td className="py-3 px-4"><Badge className={getStatusBadgeColor(call.status)}>{getStatusText(call.status)}</Badge></td>
                             <td className="py-3 px-4"><Badge variant="outline">{getConversationStatusText(call.conversationStatus)}</Badge></td>
-                            <td className="py-3 px-4"><TagDots tags={call.tags ?? []} /></td>
+
                             <td className="py-3 px-4">
                               <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); handleCallClick(call) }} className="transition-all duration-200 hover:shadow-md">
                                 <Phone className="h-4 w-4" />
@@ -860,7 +890,7 @@ export default function CallsPage() {
                           <div className="flex justify-between items-center"><span className="text-xs text-gray-500">Ora di inizio</span><span className="text-xs">{formatDate(call.startTime)}</span></div>
                           <div className="flex justify-between items-center"><span className="text-xs text-gray-500">Stato</span><Badge className={`${getStatusBadgeColor(call.status)} text-xs`}>{getStatusText(call.status)}</Badge></div>
                           <div className="flex justify-between items-center"><span className="text-xs text-gray-500">Conversazione</span><Badge variant="outline" className="text-xs">{getConversationStatusText(call.conversationStatus)}</Badge></div>
-                          <div className="flex justify-between items-center"><span className="text-xs text-gray-500">Tag</span><TagDots tags={call.tags ?? []} /></div>
+
                         </div>
                       </div>
                     ))}
@@ -871,7 +901,7 @@ export default function CallsPage() {
                   <div className="text-center">
                     <Phone className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                     <h3 className="text-lg font-medium text-gray-900 mb-2">Nessuna chiamata trovata</h3>
-                    <p className="text-gray-500 mb-4 text-sm sm:text-base">{filters.statuses.length > 0 || filters.tags.length > 0 ? "Prova a modificare i filtri" : "Non ci sono chiamate che corrispondono ai criteri attuali."}</p>
+                    <p className="text-gray-500 mb-4 text-sm sm:text-base">{filters.statuses.length > 0 ? "Prova a modificare i filtri" : "Non ci sono chiamate che corrispondono ai criteri attuali."}</p>
                     <Button onClick={() => fetchCalls(undefined, true)} size="sm" className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700">
                       <RefreshCw className="h-4 w-4 mr-2" /> Aggiorna
                     </Button>
@@ -1105,12 +1135,21 @@ export default function CallsPage() {
 
 function getStatusBadgeColor(s: number) {
   switch (s) {
+    case 100:
+    case 130:
     case 4: return "bg-green-100 text-green-800"
-    case 6: return "bg-red-100 text-red-800"
-    case 3: return "bg-blue-100 text-blue-800"
+    case 6:
+    case 110:
+    case 500: return "bg-red-100 text-red-800"
+    case 3:
+    case 40: return "bg-blue-100 text-blue-800"
     case 5:
     case 7:
-    case 8: return "bg-purple-100 text-purple-800"
+    case 8:
+    case 70: return "bg-purple-100 text-purple-800"
+    case 1:
+    case 10:
+    case 20: return "bg-yellow-100 text-yellow-800"
     default: return "bg-gray-100 text-gray-800"
   }
 }
