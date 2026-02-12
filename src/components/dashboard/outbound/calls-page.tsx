@@ -15,7 +15,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Loader2, Edit, RefreshCw, Phone, X, ArrowRight, Filter, ChevronDown, AlertCircle } from "lucide-react"
+import { Loader2, Edit, RefreshCw, Phone, X, ArrowRight, ChevronDown, AlertCircle } from "lucide-react"
 import * as ToastPrimitives from "@radix-ui/react-toast"
 import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/lib/utils"
@@ -280,131 +280,7 @@ const formatDate = (iso: string) => new Date(iso).toLocaleString()
 
 
 
-const UnifiedStatusSelector: React.FC<{ selectedStatuses: number[]; onStatusChange: (statusId: number | null) => void }> = ({ selectedStatuses, onStatusChange }) => {
-  const [isOpen, setIsOpen] = useState(false)
-  const [search, setSearch] = useState("")
 
-  // Combine all relevant statuses. We primarily use Conversation Statuses as requested.
-  // We map them to { id, label }
-  const options = Object.entries(CONV_STATUS_TEXT).map(([id, label]) => ({
-    id: Number(id),
-    label: label
-  }))
-
-  const filteredOptions = options.filter(opt => opt.label.toLowerCase().includes(search.toLowerCase()))
-
-  const handleSelect = (id: number) => {
-    // Toggle: if already selected, clear it (or distinct behavior if multiple allowed, but request implies single selection logic "like this")
-    // The user json has "statuses": [100], asking for array. 
-    // But the UI screenshot looks like a single select or multi select. 
-    // "like this" usually implies single select if it closes. 
-    // Let's support toggling or setting. 
-    // For now, let's assume we want to SET this status as the filter (single select behavior effectively, or add directly).
-    // The user example has "statuses": [100].
-    // Let's implement as single select for "Status" that pushes to the array.
-
-    // Actually, looking at the previous implementation, it supported multi-select.
-    // However, the screenshot shows a standard dropdown list.
-    // I will implement as: click -> selects this ONE status (clearing others) to match "statuses: [100]" example which looks completely specific.
-    // OR we can support multi-select. 
-    // The prompt says "here just work based on status no other things ... statuses: [100]".
-    // This implies setting the filter to this status. 
-
-    // Let's stick to: Click -> Selects this status (exclusively? or toggles?)
-    // Existing selectors were multi-select. 
-    // But "Unified" implies a simpler "Status" dropdown. 
-    // I will make it toggle-able but effectively treating it as adding/removing from the list. 
-    // Wait, the prompt implies "statuses": [100] as the result. 
-
-    // Let's implement Multi-select capability but visually similar to the screenshot.
-    // But wait, standard Combobox usually closes on selection.
-
-    // Refined plan: Click -> Toggle selection. If it's a "Filter", usually multi-select is good.
-    // But user sample request: "statuses": [100].
-    // I'll assume single select is acceptable or preferred given the "clean" screenshot, BUT standard filters often allow multiple.
-    // I'll stick to single select for now to match the [100] example precisely, or allow the parent to handle array.
-    // The prop `onStatusChange` taking `number | null` implies single change event.
-    // I will treat it as "Select this status".
-
-    onStatusChange(id)
-    setIsOpen(false)
-  }
-
-  const selectedLabel = selectedStatuses.length === 1 ? CONV_STATUS_TEXT[selectedStatuses[0]] : selectedStatuses.length > 1 ? `${selectedStatuses.length} selezionati` : "Stato"
-
-  return (
-    <div className="relative">
-      <Button variant="outline" onClick={() => setIsOpen(!isOpen)} className="w-[180px] justify-between border-slate-200">
-        {selectedLabel === "Stato" ? <span className="text-slate-500">Stato</span> : <span>{selectedLabel}</span>}
-        <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-      </Button>
-      {isOpen && (
-        <>
-          <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
-          <div className="absolute top-full left-0 mt-1 w-[200px] bg-white border border-slate-200 rounded-md shadow-lg z-50 overflow-hidden">
-            <div className="flex items-center border-b px-3">
-              <Filter className="mr-2 h-4 w-4 shrink-0 opacity-50" />
-              <input
-                className="flex h-10 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-slate-500 disabled:cursor-not-allowed disabled:opacity-50"
-                placeholder="Cerca..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                autoFocus
-              />
-            </div>
-            <div className="max-h-[300px] overflow-y-auto p-1">
-              <div
-                className={cn(
-                  "relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-slate-100 data-[disabled]:pointer-events-none data-[disabled]:opacity-50 cursor-pointer",
-                  selectedStatuses.length === 0 && "bg-slate-100 font-medium"
-                )}
-                onClick={() => { onStatusChange(null); setIsOpen(false) }}
-              >
-                <div className={cn("mr-2 flex h-4 w-4 items-center justify-center opacity-0", selectedStatuses.length === 0 && "opacity-100")}>
-                  <svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg" className="h-4 w-4"><path d="M11.4669 3.72684C11.7558 3.91574 11.8369 4.30308 11.648 4.59198L7.39799 11.092C7.29783 11.2452 7.13556 11.3467 6.95402 11.3699C6.77247 11.3931 6.58989 11.3355 6.45446 11.2124L3.70446 8.71241C3.44905 8.48022 3.43023 8.08494 3.66242 7.82953C3.89461 7.57412 4.28989 7.55529 4.5453 7.78749L6.75292 9.79441L10.6018 3.90792C10.7907 3.61902 11.178 3.53795 11.4669 3.72684Z" fill="currentColor" fillRule="evenodd" clipRule="evenodd" /></svg>
-                </div>
-                Tutti gli stati
-              </div>
-              {filteredOptions.length === 0 ? (
-                <div className="py-6 text-center text-sm">Nessuno stato trovato.</div>
-              ) : (
-                filteredOptions.map((option) => (
-                  <div
-                    key={option.id}
-                    className={cn(
-                      "relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-slate-100 data-[disabled]:pointer-events-none data-[disabled]:opacity-50 cursor-pointer",
-                      selectedStatuses.includes(option.id) && "bg-slate-100 font-medium"
-                    )}
-                    onClick={() => handleSelect(option.id)}
-                  >
-                    <div className={cn("mr-2 flex h-4 w-4 items-center justify-center opacity-0", selectedStatuses.includes(option.id) && "opacity-100")}>
-                      <svg
-                        width="15"
-                        height="15"
-                        viewBox="0 0 15 15"
-                        fill="none"
-                        xmlns="http://www.w3.org/2000/svg"
-                        className="h-4 w-4"
-                      >
-                        <path
-                          d="M11.4669 3.72684C11.7558 3.91574 11.8369 4.30308 11.648 4.59198L7.39799 11.092C7.29783 11.2452 7.13556 11.3467 6.95402 11.3699C6.77247 11.3931 6.58989 11.3355 6.45446 11.2124L3.70446 8.71241C3.44905 8.48022 3.43023 8.08494 3.66242 7.82953C3.89461 7.57412 4.28989 7.55529 4.5453 7.78749L6.75292 9.79441L10.6018 3.90792C10.7907 3.61902 11.178 3.53795 11.4669 3.72684Z"
-                          fill="currentColor"
-                          fillRule="evenodd"
-                          clipRule="evenodd"
-                        />
-                      </svg>
-                    </div>
-                    {option.label}
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </>
-      )}
-    </div>
-  )
-}
 
 
 
@@ -780,36 +656,7 @@ export default function CallsPage() {
             <div className="bg-white border-b border-gray-200 p-3 sm:p-4">
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center space-y-2 sm:space-y-0 sm:space-x-4">
                 <div className="flex space-x-2 sm:space-x-4">
-                  {/* Unified Status Selector - Filters by 'statuses' on server, using 'Conversation Status' labels */}
-                  <UnifiedStatusSelector
-                    selectedStatuses={filters.statuses}
-                    onStatusChange={(id) => {
-                      // Logic: 
-                      // If id is null (cleared) -> empty list
-                      // If id is provided -> set as [id] (Single select behavior for now to match specific request)
-                      // OR toggle if we want multi-select. 
-                      // User request: "statuses": [100]. 
-                      // Let's implement toggle behavior to allow [100, 110] if needed, or just set.
-                      // Given "UnifiedStatusSelector" above calls with `handleSelect(id)`, let's make it toggle.
 
-                      let newStatuses = [...filters.statuses]
-                      if (id === null) {
-                        newStatuses = []
-                      } else {
-                        if (newStatuses.includes(id)) {
-                          newStatuses = newStatuses.filter(s => s !== id)
-                        } else {
-                          // If single select is preferred by UI style:
-                          newStatuses = [id]
-                          // If multi-select: newStatuses.push(id)
-                        }
-                      }
-
-                      const nf = { ...filters, statuses: newStatuses, skip: 0 }
-                      setFilters(nf)
-                      fetchCalls(nf)
-                    }}
-                  />
                   <LimitSelector limit={filters.limit} onLimitChange={(n) => { const nf = { ...filters, limit: n, skip: 0 }; setFilters(nf); fetchCalls(nf) }} />
                 </div>
               </div>
