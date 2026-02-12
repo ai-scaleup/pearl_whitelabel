@@ -338,10 +338,18 @@ const ANALYTICS_API_BASE_URL = process.env.NLPEARL_API_BASE_URL || "https://api.
 // const OUR_SMS_RATE = 0.16 as const
 // void OUR_SMS_RATE
 
+const MIN_STATS_DATE = new Date("2026-02-01T00:00:00Z")
+
 const getDefaultDateRange = () => {
   const to = new Date()
   const from = new Date()
   from.setDate(from.getDate() - 30)
+
+  // Clamp to MIN_STATS_DATE
+  if (from < MIN_STATS_DATE) {
+    from.setTime(MIN_STATS_DATE.getTime())
+  }
+
   // Strip milliseconds: YYYY-MM-DDTHH:mm:ssZ
   const toStr = to.toISOString().split(".")[0] + "Z"
   const fromStr = from.toISOString().split(".")[0] + "Z"
@@ -421,6 +429,16 @@ function buildRange(preset: PresetKey, customDays?: number) {
       break
     }
   }
+
+  // Clamp from date if it's before MIN_STATS_DATE
+  if (from < MIN_STATS_DATE) {
+    from = new Date(MIN_STATS_DATE)
+  }
+  // Ensure we don't end up with from > to (unlikely if current date is >= 2026-02, but good for safety)
+  if (from > to) {
+    // optional: force 'to' to be at least 'from', or just leave as is (likely empty results)
+  }
+
   const toStr = to.toISOString().split(".")[0] + "Z"
   const fromStr = from.toISOString().split(".")[0] + "Z"
   return { from: fromStr, to: toStr }
@@ -488,7 +506,7 @@ const OverviewPage = () => {
   // --- filtro unico Prestazioni ---
   const [perfPreset, setPerfPreset] = useState<PresetKey>("thisMonth")
   const [perfCustomDays, setPerfCustomDays] = useState<string>("")
-  const [perfCustomFrom, setPerfCustomFrom] = useState<string>("")
+  const [perfCustomFrom, setPerfCustomFrom] = useState<string>("2026-02-01")
   const [perfCustomTo, setPerfCustomTo] = useState<string>("")
 
   // --- Cronologia (preset + giorni personalizzati) ---
@@ -1125,6 +1143,12 @@ const OverviewPage = () => {
         toast({ title: "Intervallo non valido", description: "La data di inizio deve precedere la fine.", variant: "destructive" })
         return
       }
+
+      // Clamp custom range start
+      if (from < MIN_STATS_DATE) {
+        from.setTime(MIN_STATS_DATE.getTime())
+      }
+
       const fromISO = new Date(from.getFullYear(), from.getMonth(), from.getDate(), 0, 0, 0, 0).toISOString()
       const toISO = new Date(to.getFullYear(), to.getMonth(), to.getDate(), 23, 59, 59, 999).toISOString()
       range = { from: fromISO, to: toISO }
@@ -1488,6 +1512,7 @@ const OverviewPage = () => {
                     {/* Da - A */}
                     <input
                       type="date"
+                      min="2026-02-01"
                       className="h-9 rounded-md border px-2 text-sm"
                       value={perfCustomFrom}
                       onChange={(e) => setPerfCustomFrom(e.target.value)}
@@ -1495,6 +1520,7 @@ const OverviewPage = () => {
                     <span className="text-xs text-gray-500">a</span>
                     <input
                       type="date"
+                      min="2026-02-01"
                       className="h-9 rounded-md border px-2 text-sm"
                       value={perfCustomTo}
                       onChange={(e) => setPerfCustomTo(e.target.value)}
